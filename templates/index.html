@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Сжатие Изображений</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .img-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .img-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .metrics-box {
+            background-color: #f8f9fa;
+            border-left: 5px solid #0d6efd;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container py-5">
+    <h1 class="text-center mb-4">Wavelet + AI Image Compression</h1>
+
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card p-4">
+                <form method="post" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Выберите изображение:</label>
+                        <input class="form-control" type="file" name="file" id="file" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Загрузить и Обработать</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% if restored %}
+    <hr class="my-5">
+
+   <div class="row text-center">
+        <div class="col-md-4 img-container">
+            <h4>Оригинал</h4>
+            <span class="badge bg-secondary mb-2">{{ size_orig }}</span>
+            <br>
+            <img src="{{ original }}" alt="Original">
+        </div>
+
+        <div class="col-md-4 img-container">
+            <h4>Сжатое (Wavelet)</h4>
+            <span class="badge bg-success mb-2">{{ size_comp }}</span>
+            <span class="badge bg-danger mb-2">Экономия {{ comp_ratio }}</span>
+            <br>
+            <img src="{{ compressed }}" alt="Compressed">
+        </div>
+
+        <div class="col-md-4 img-container">
+            <h4>Восстановлено (AI)</h4>
+            <span class="badge bg-primary mb-2">{{ size_rest }}</span>
+            <br>
+            <img src="{{ restored }}" alt="Restored">
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="metrics-box">
+                <h3 class="text-center">Качество восстановления</h3>
+                <div class="row text-center mt-3">
+                    <div class="col-6">
+                        <h2 class="text-primary">{{ psnr }} dB</h2>
+                        <p>PSNR (чем больше, тем лучше)</p>
+                    </div>
+                    <div class="col-6">
+                        <h2 class="text-success">{{ ssim }}</h2>
+                        <p>SSIM (максимум 1.0)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+</body>
+</html>
