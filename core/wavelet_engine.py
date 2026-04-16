@@ -9,39 +9,37 @@ class WaveletCompressor:
 
     def get_compressed_skeleton(self, image_path):
         """
-        Возвращает:
-        1. compressed_img - нормализованное изображение (скелет)
-        2. original_shape - размеры оригинала
+        Возвращает нормализованное сжатое изображение и его исходный размер
         """
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"Не удалось открыть изображение: {image_path}")
 
-        # Работаем с float, чтобы не потерять данные при вычислениях
-        img = img.astype(np.float32)
+        # Перевод в YCrCb (согласно дипломной работе)
+        img_ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb).astype(np.float32)
 
-        # Разбиваем на каналы
-        b, g, r = cv2.split(img)
+        # Разбиваем на каналы: Яркость (Y), Цветоразность (Cr, Cb)
+        y, cr, cb = cv2.split(img_ycrcb)
 
-        def get_ll(channel):
+        def process_channel(channel):
+            # Двумерное дискретное вейвлет-преобразование
             coeffs = pywt.dwt2(channel, self.wavelet_type)
             LL, (LH, HL, HH) = coeffs
 
-            # --- ГЛАВНОЕ ИСПРАВЛЕНИЕ ---
-            # PyWavelets Haar увеличивает значения в 2 раза.
-            # Делим на 2, чтобы вернуть оригинальную яркость.
+            # Нормализация амплитуды фильтра Хаара (возвращаем исходную яркость)
             return LL / 2.0
 
-        ll_b = get_ll(b)
-        ll_g = get_ll(g)
-        ll_r = get_ll(r)
+        ll_y = process_channel(y)
+        ll_cr = process_channel(cr)
+        ll_cb = process_channel(cb)
 
-        # Собираем
-        merged_ll = cv2.merge([ll_b, ll_g, ll_r])
+        # Объединяем аппроксимирующие матрицы
+        merged_ll = cv2.merge([ll_y, ll_cr, ll_cb])
 
-        # Теперь безопасно обрезаем (значения уже в пределах нормы)
-        # Округляем (round) перед приведением к типу, чтобы уменьшить шум
-        compressed_img = np.round(merged_ll)
-        compressed_img = np.clip(compressed_img, 0, 255).astype('uint8')
+        # Округляем для подавления вычислительного шума и ограничиваем диапазон 8-bit
+        merged_ll = np.clip(np.round(merged_ll), 0, 255).astype(np.uint8)
 
-        return compressed_img, img.shape
+        # Обратная конверсия в BGR для передачи по сети и сохранения
+        skeleton_bgr = cv2.cvtColor(merged_ll, cv2.COLOR_YCrCb2BGR)
+
+        return skeleton_bgr, img.shape
