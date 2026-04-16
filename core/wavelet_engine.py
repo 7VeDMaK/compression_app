@@ -7,39 +7,22 @@ class WaveletCompressor:
     def __init__(self, wavelet_type='haar'):
         self.wavelet_type = wavelet_type
 
-    def get_compressed_skeleton(self, image_path):
-        """
-        Возвращает нормализованное сжатое изображение и его исходный размер
-        """
-        img = cv2.imread(image_path)
-        if img is None:
-            raise ValueError(f"Не удалось открыть изображение: {image_path}")
+    def cascade_compress(self, image, level=1):
+        """Выполняет многоуровневое DWT преобразование"""
+        # Перевод в YCrCb
+        img_ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb).astype(np.float32)
 
-        # Перевод в YCrCb (согласно дипломной работе)
-        img_ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb).astype(np.float32)
+        current_data = img_ycrcb
+        for _ in range(level):
+            # Разбиваем на каналы
+            y, cr, cb = cv2.split(current_data)
 
-        # Разбиваем на каналы: Яркость (Y), Цветоразность (Cr, Cb)
-        y, cr, cb = cv2.split(img_ycrcb)
+            def get_ll(channel):
+                coeffs = pywt.dwt2(channel, self.wavelet_type)
+                return coeffs[0] / 2.0  # LL субполоса с нормализацией
 
-        def process_channel(channel):
-            # Двумерное дискретное вейвлет-преобразование
-            coeffs = pywt.dwt2(channel, self.wavelet_type)
-            LL, (LH, HL, HH) = coeffs
+            current_data = cv2.merge([get_ll(y), get_ll(cr), get_ll(cb)])
 
-            # Нормализация амплитуды фильтра Хаара (возвращаем исходную яркость)
-            return LL / 2.0
-
-        ll_y = process_channel(y)
-        ll_cr = process_channel(cr)
-        ll_cb = process_channel(cb)
-
-        # Объединяем аппроксимирующие матрицы
-        merged_ll = cv2.merge([ll_y, ll_cr, ll_cb])
-
-        # Округляем для подавления вычислительного шума и ограничиваем диапазон 8-bit
-        merged_ll = np.clip(np.round(merged_ll), 0, 255).astype(np.uint8)
-
-        # Обратная конверсия в BGR для передачи по сети и сохранения
-        skeleton_bgr = cv2.cvtColor(merged_ll, cv2.COLOR_YCrCb2BGR)
-
-        return skeleton_bgr, img.shape
+        # Финальная упаковка в 8-бит
+        skeleton = np.clip(np.round(current_data), 0, 255).astype(np.uint8)
+        return cv2.cvtColor(skeleton, cv2.COLOR_YCrCb2BGR)

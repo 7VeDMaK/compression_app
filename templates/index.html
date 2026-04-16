@@ -9,15 +9,23 @@
 <body>
     <div class="container">
         <h1>Анализ гибридного алгоритма сжатия</h1>
-        <p class="subtitle">DWT (Вейвлет Хаара) + AI (Сверточная нейросеть)</p>
+        <p class="subtitle">Каскадный DWT + Цветовые метаданные + AI Upscaling</p>
 
         <div class="upload-section">
             <form method="post" enctype="multipart/form-data">
-                <label for="file-upload" class="custom-file-upload">
-                    Выберите изображение
-                </label>
+                <label for="file-upload" class="custom-file-upload">Выберите изображение</label>
                 <input id="file-upload" type="file" name="file" accept="image/*" required>
-                <button type="submit" class="btn">Запустить обработку</button>
+
+                <div style="margin: 25px 0;">
+                    <label style="font-weight: bold; color: #2c3e50; font-size: 1.1em;">Уровень сжатия (Каскад DWT):</label><br>
+                    <div style="margin-top: 15px; display: flex; justify-content: center; gap: 30px;">
+                        <label style="cursor: pointer;"><input type="radio" name="level" value="1" checked> Level 1 (x4)</label>
+                        <label style="cursor: pointer;"><input type="radio" name="level" value="2"> Level 2 (x16)</label>
+                        <label style="cursor: pointer;"><input type="radio" name="level" value="3"> Level 3 (x64)</label>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn">Запустить Гибридный Кодек</button>
             </form>
         </div>
 
@@ -26,7 +34,7 @@
             {% for stage in stages %}
             <div class="stage-card">
                 <div class="stage-title">{{ stage.title }}</div>
-                <img src="/{{ stage.path }}" alt="{{ stage.title }}">
+                <img src="/{{ stage.path }}" alt="{{ stage.title }}" class="zoomable" onclick="openLightbox(this.src)">
                 <div class="meta">
                     <b>Вес:</b> {{ stage.size }} <br>
                     <b>Разрешение:</b> {{ stage.res }} <br>
@@ -48,33 +56,28 @@
             </div>
             <div class="stat-item">
                 <span class="stat-value highlight-text">{{ comp_ratio }}</span>
-                <span>Сжатие файла</span>
+                <span>Сэкономлено трафика</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" style="color: #f1c40f;">{{ time }} сек</span>
+                <span>Время работы</span>
             </div>
         </div>
 
-        <div class="guide-section">
-            <h3>Как интерпретировать результаты:</h3>
-            <p><b>Суть метода:</b> Мы отбрасываем высокие частоты вейвлетом (уменьшая вес файла), а затем нейросеть дорисовывает потерянные детали.</p>
-
-            <div class="guide-columns">
-                <div class="guide-col good-result">
-                    <h4>✅ Отличный результат</h4>
-                    <ul>
-                        <li><b>Метрики:</b> PSNR > 30 дБ, SSIM > 0.9</li>
-                        <li><b>Подходящие фото:</b> Природа, портреты, плавные градиенты.</li>
-                        <li><b>Почему:</b> Нейросети легко предсказывать и дорисовывать естественные текстуры (кожу, траву, небо).</li>
-                    </ul>
-                </div>
-                <div class="guide-col bad-result">
-                    <h4>⚠️ Сложный результат</h4>
-                    <ul>
-                        <li><b>Метрики:</b> PSNR < 25 дБ</li>
-                        <li><b>Подходящие фото:</b> Чертежи, скриншоты кода, мелкий текст.</li>
-                        <li><b>Почему:</b> Вейвлет сильно размывает мелкие жесткие линии, и нейросети не хватает данных для их точного восстановления.</li>
-                    </ul>
-                </div>
-            </div>
+        <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+            <span class="close-btn">&times;</span>
+            <img class="lightbox-content" id="lightbox-img">
         </div>
+
+        <script>
+            function openLightbox(imgSrc) {
+                document.getElementById('lightbox').style.display = "flex";
+                document.getElementById('lightbox-img').src = imgSrc;
+            }
+            function closeLightbox() {
+                document.getElementById('lightbox').style.display = "none";
+            }
+        </script>
         {% endif %}
     </div>
 </body>
