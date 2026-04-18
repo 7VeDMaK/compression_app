@@ -2,83 +2,119 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hybrid Image Codec Lab</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .result-block { background: #fff; padding: 20px; border-radius: 10px; margin-bottom: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .filename-header { font-size: 1.2em; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-bottom: 20px; }
+        .mode-switch { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { padding: 10px 20px; border: 2px solid #3498db; background: transparent; color: #3498db; border-radius: 5px; cursor: pointer; font-weight: bold; transition: all 0.2s ease;}
+        .mode-btn:hover { background: #ebf5fb; }
+        .mode-btn.active { background: #3498db; color: white; }
+        .manual-settings { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #e67e22; }
+        .manual-settings label { margin-right: 15px; cursor: pointer; display: inline-block; padding: 5px 0; }
+        .setting-row { margin-bottom: 12px; }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h1>Анализ гибридного алгоритма сжатия</h1>
-        <p class="subtitle">Каскадный DWT + Цветовые метаданные + AI Upscaling</p>
+        <h1>Hybrid Image Codec</h1>
+        <p class="subtitle">DWT + Edge/Color Metadata + Deep Learning</p>
 
         <div class="upload-section">
-            <form method="post" enctype="multipart/form-data">
-                <label for="file-upload" class="custom-file-upload">Выберите изображение</label>
-                <input id="file-upload" type="file" name="file" accept="image/*" required>
+            <div class="mode-switch">
+                <button type="button" class="mode-btn {% if app_mode != 'manual' %}active{% endif %}" onclick="setMode('auto')" id="btn-auto">1. Промышленный (Smart Auto)</button>
+                <button type="button" class="mode-btn {% if app_mode == 'manual' %}active{% endif %}" onclick="setMode('manual')" id="btn-manual">2. Лабораторный (Manual)</button>
+            </div>
 
-                <div style="margin: 25px 0;">
-                    <label style="font-weight: bold; color: #2c3e50; font-size: 1.1em;">Уровень сжатия (Каскад DWT):</label><br>
-                    <div style="margin-top: 15px; display: flex; justify-content: center; gap: 30px;">
-                        <label style="cursor: pointer;"><input type="radio" name="level" value="1" checked> Level 1 (x4)</label>
-                        <label style="cursor: pointer;"><input type="radio" name="level" value="2"> Level 2 (x16)</label>
-                        <label style="cursor: pointer;"><input type="radio" name="level" value="3"> Level 3 (x64)</label>
+            <form method="post" enctype="multipart/form-data" id="main-form">
+                <input type="hidden" name="app_mode" id="app_mode" value="{{ app_mode|default('auto') }}">
+                <input type="hidden" name="cached_files" value="{{ cached_files|default('') }}">
+
+                <label for="file-upload" class="custom-file-upload">Выбрать фото (можно несколько)</label>
+                <input id="file-upload" type="file" name="files" accept="image/*" multiple>
+
+                <div class="manual-settings" id="manual-panel" style="display: {% if app_mode == 'manual' %}block{% else %}none{% endif %};">
+                    <h4 style="margin-top:0; margin-bottom: 15px; color:#e67e22;">Тонкая настройка кодека:</h4>
+
+                    <div class="setting-row">
+                        <b style="display:inline-block; width: 180px;">Степень DWT:</b>
+                        <label><input type="radio" name="level" value="0" {% if current_level == 0 %}checked{% endif %}> ОТКЛ (Baseline)</label>
+                        <label><input type="radio" name="level" value="1" {% if current_level == 1 or current_level is not defined %}checked{% endif %}> Level 1 (x4)</label>
+                        <label><input type="radio" name="level" value="2" {% if current_level == 2 %}checked{% endif %}> Level 2 (x16)</label>
+                        <label><input type="radio" name="level" value="3" {% if current_level == 3 %}checked{% endif %}> Level 3 (x64)</label>
+                    </div>
+
+                    <div class="setting-row">
+                        <b style="display:inline-block; width: 180px;">Метаданные (Цвет):</b>
+                        <label><input type="radio" name="meta_color" value="-1" {% if meta_color == -1 or meta_color is not defined %}checked{% endif %}> Авто</label>
+                        <label><input type="radio" name="meta_color" value="0" {% if meta_color == 0 %}checked{% endif %}> ОТКЛ (0 КБ)</label>
+                        <label><input type="radio" name="meta_color" value="32" {% if meta_color == 32 %}checked{% endif %}> Low (32px)</label>
+                        <label><input type="radio" name="meta_color" value="128" {% if meta_color == 128 %}checked{% endif %}> High (128px)</label>
+                    </div>
+
+                    <div class="setting-row">
+                        <b style="display:inline-block; width: 180px;">Метаданные (Контуры):</b>
+                        <label><input type="radio" name="meta_edge" value="-1" {% if meta_edge == -1.0 or meta_edge is not defined %}checked{% endif %}> Авто</label>
+                        <label><input type="radio" name="meta_edge" value="0" {% if meta_edge == 0.0 %}checked{% endif %}> ОТКЛ (0 КБ)</label>
+                        <label><input type="radio" name="meta_edge" value="0.2" {% if meta_edge == 0.2 %}checked{% endif %}> Low (20%)</label>
+                        <label><input type="radio" name="meta_edge" value="0.5" {% if meta_edge == 0.5 %}checked{% endif %}> High (50%)</label>
                     </div>
                 </div>
 
-                <button type="submit" class="btn">Запустить Гибридный Кодек</button>
+                <div style="margin-top: 25px;">
+                    <button type="submit" class="btn">Запустить конвейер</button>
+                </div>
             </form>
+
+            {% if cached_files %}
+            <p style="font-size: 0.85em; color: #7f8c8d; margin-top: 15px;">* Файлы в кэше. Меняйте настройки и жмите Запуск.</p>
+            {% endif %}
         </div>
 
-        {% if restored_flag %}
-        <div class="stage-grid">
-            {% for stage in stages %}
-            <div class="stage-card">
-                <div class="stage-title">{{ stage.title }}</div>
-                <img src="/{{ stage.path }}" alt="{{ stage.title }}" class="zoomable" onclick="openLightbox(this.src)">
-                <div class="meta">
-                    <b>Вес:</b> {{ stage.size }} <br>
-                    <b>Разрешение:</b> {{ stage.res }} <br>
-                    {% if stage.highlight %}<span class="highlight">{{ stage.highlight }}</span>{% endif %}
+        {% if results %}
+            {% for item in results %}
+            <div class="result-block">
+                <div class="filename-header">Файл: <b>{{ item.filename }}</b></div>
+                <div class="stage-grid">
+                    {% for stage in item.stages %}
+                    <div class="stage-card">
+                        <div class="stage-title">{{ stage.title }}</div>
+                        <img src="/{{ stage.path }}" class="zoomable" onclick="openLightbox(this.src)">
+                        <div class="meta"><b>Вес:</b> {{ stage.size }} <br><b>Разрешение:</b> {{ stage.res }} <br>
+                        {% if stage.highlight %}<span class="highlight">{{ stage.highlight }}</span>{% endif %}</div>
+                        <p class="desc">{{ stage.desc }}</p>
+                    </div>
+                    {% endfor %}
                 </div>
-                <p class="desc">{{ stage.desc }}</p>
+                <div class="stats-panel">
+                    <div class="stat-item"><span class="stat-value">{{ item.psnr }} дБ</span><span>PSNR</span></div>
+                    <div class="stat-item"><span class="stat-value">{{ item.ssim }}</span><span>SSIM</span></div>
+                    <div class="stat-item"><span class="stat-value highlight-text">{{ item.comp_ratio }}</span><span>Сжатие</span></div>
+                    <div class="stat-item"><span class="stat-value" style="color: #f1c40f;">{{ item.time }} с</span><span>Время</span></div>
+                </div>
             </div>
             {% endfor %}
-        </div>
-
-        <div class="stats-panel">
-            <div class="stat-item">
-                <span class="stat-value">{{ psnr }} дБ</span>
-                <span>Качество (PSNR)</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-value">{{ ssim }}</span>
-                <span>Сходство (SSIM)</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-value highlight-text">{{ comp_ratio }}</span>
-                <span>Сэкономлено трафика</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-value" style="color: #f1c40f;">{{ time }} сек</span>
-                <span>Время работы</span>
-            </div>
-        </div>
-
-        <div id="lightbox" class="lightbox" onclick="closeLightbox()">
-            <span class="close-btn">&times;</span>
-            <img class="lightbox-content" id="lightbox-img">
-        </div>
-
-        <script>
-            function openLightbox(imgSrc) {
-                document.getElementById('lightbox').style.display = "flex";
-                document.getElementById('lightbox-img').src = imgSrc;
-            }
-            function closeLightbox() {
-                document.getElementById('lightbox').style.display = "none";
-            }
-        </script>
+            <div id="lightbox" class="lightbox" onclick="closeLightbox()"><span class="close-btn">&times;</span><img class="lightbox-content" id="lightbox-img"></div>
         {% endif %}
     </div>
+
+    <script>
+        function setMode(mode) {
+            document.getElementById('app_mode').value = mode;
+            document.getElementById('btn-auto').classList.remove('active');
+            document.getElementById('btn-manual').classList.remove('active');
+
+            if (mode === 'auto') {
+                document.getElementById('btn-auto').classList.add('active');
+                document.getElementById('manual-panel').style.display = 'none';
+            } else {
+                document.getElementById('btn-manual').classList.add('active');
+                document.getElementById('manual-panel').style.display = 'block';
+            }
+        }
+        function openLightbox(src) { document.getElementById('lightbox').style.display = "flex"; document.getElementById('lightbox-img').src = src; }
+        function closeLightbox() { document.getElementById('lightbox').style.display = "none"; }
+    </script>
 </body>
 </html>
