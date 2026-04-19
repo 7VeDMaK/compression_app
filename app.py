@@ -40,7 +40,6 @@ def get_file_info(filepath):
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        # Считываем ВСЕ настройки из формы
         app_mode = request.form.get('app_mode', 'auto')
         manual_level = int(request.form.get('level', 1))
         meta_color = int(request.form.get('meta_color', -1))
@@ -71,21 +70,27 @@ def index():
             size_orig_val, size_orig_str = get_file_info(original_path)
             filename = os.path.basename(original_path)
             name_only = filename.rsplit('.', 1)[0]
-            start_time = time.time()
 
-            # --- ЛОГИКА МАРШРУТИЗАЦИИ ---
+            # Старт общего таймера
+            t0 = time.time()
+
             if app_mode == 'auto' and size_orig_val < 50:
+                # КОДЕР (Пропуск)
                 compressed_path = os.path.join(RESULTS_FOLDER, f"comp_{name_only}.png")
-                restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.png")
                 cv2_imwrite_utf8(compressed_path, original_img)
+                t1 = time.time()
+
+                # ДЕКОДЕР (Пропуск)
+                restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.png")
                 cv2_imwrite_utf8(restored_path, original_img)
+                t2 = time.time()
+
                 model_name, comp_level_str, highlight_text = "Пропуск", "Отключено", "Слишком мал"
             else:
-                # Определяем параметры
                 if app_mode == 'auto':
                     megapixels = (h_orig * w_orig) / 1_000_000
                     current_comp_level = 3 if megapixels >= 4.0 else (2 if megapixels >= 1.0 else 1)
-                    c_size, e_scale = None, None  # Auto size
+                    c_size, e_scale = None, None
                     auto_reason = " (Smart Auto)"
                 else:
                     current_comp_level = manual_level
@@ -93,47 +98,47 @@ def index():
                     e_scale = meta_edge if meta_edge != -1.0 else None
                     auto_reason = " (Manual)"
 
-                # --- НОВОЕ: БАЗОВАЯ ЛИНИЯ (БЕЗ DWT И ИИ) ---
                 if current_comp_level == 0:
+                    # КОДЕР (Baseline)
                     compressed_path = os.path.join(RESULTS_FOLDER, f"comp_{name_only}.jpg")
-                    # Просто жмем оригинал обычным JPEG как есть
                     cv2_imwrite_utf8(compressed_path, original_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    t1 = time.time()
 
-                    # Читаем обратно то, что получилось (с артефактами JPEG), это и есть наш финал
+                    # ДЕКОДЕР (Baseline)
                     final_img = cv2_imread_utf8(compressed_path)
                     model_name = "Отключено (Baseline JPEG)"
-
                     restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.jpg")
                     cv2_imwrite_utf8(restored_path, final_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                    t2 = time.time()
                     comp_level_str = f"ОТКЛ{auto_reason}"
-
                 else:
-                    # --- ГИБРИДНЫЙ ПАЙПЛАЙН ---
-                    # Извлекаем мету
+                    # КОДЕР (Гибрид)
                     color_palette = meta_engine.extract_color_palette(original_img, force_size=c_size)
                     edge_map = meta_engine.extract_edge_map(original_img, force_scale=e_scale)
-
-                    # Сжатие
                     skeleton = compressor.cascade_compress(original_img, level=current_comp_level)
                     compressed_path = os.path.join(RESULTS_FOLDER, f"comp_{name_only}.jpg")
                     cv2_imwrite_utf8(compressed_path, skeleton, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    t1 = time.time()
 
-                    # Восстановление
+                    # ДЕКОДЕР (Гибрид)
                     raw_restored, model_name, _ = ai_engine.restore_image(skeleton, original_img.shape,
                                                                           steps=current_comp_level)
                     color_corrected = meta_engine.apply_color_correction(raw_restored, color_palette)
                     final_img = meta_engine.apply_edge_sharpening(color_corrected, edge_map)
-
                     restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.jpg")
                     cv2_imwrite_utf8(restored_path, final_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                    t2 = time.time()
+
                     comp_level_str = f"L{current_comp_level}{auto_reason}"
 
-            # --- СТАТИСТИКА ---
+            # Вычисляем раздельное время
+            time_enc = round(t1 - t0, 2)
+            time_dec = round(t2 - t1, 2)
+
             size_comp_val, size_comp_str = get_file_info(compressed_path)
             size_rest_val, size_rest_str = get_file_info(restored_path)
             comp_img = cv2_imread_utf8(compressed_path)
             h_comp, w_comp = comp_img.shape[:2] if comp_img is not None else (0, 0)
-            exec_time = round(time.time() - start_time, 2)
 
             if app_mode == 'auto' and size_orig_val < 50:
                 psnr_val, ssim_val, compression_ratio = 100.0, 1.000, 0.0
@@ -146,7 +151,8 @@ def index():
 
             results_data.append({
                 "filename": filename, "psnr": psnr_val, "ssim": ssim_val,
-                "comp_ratio": f"{compression_ratio:.1f}%", "time": exec_time,
+                "comp_ratio": f"{compression_ratio:.1f}%",
+                "time_enc": time_enc, "time_dec": time_dec,
                 "stages": [
                     {"title": "1. Оригинал", "size": size_orig_str, "res": f"{w_orig}x{h_orig} px",
                      "path": original_path},
@@ -158,8 +164,6 @@ def index():
             })
 
         cached_files_out = ",".join(files_to_process)
-
-        # ПЕРЕДАЕМ НАСТРОЙКИ ОБРАТНО В ШАБЛОН ДЛЯ СОХРАНЕНИЯ СОСТОЯНИЯ
         return render_template('index.html', results=results_data, cached_files=cached_files_out,
                                app_mode=app_mode, current_level=manual_level,
                                meta_color=meta_color, meta_edge=meta_edge)
