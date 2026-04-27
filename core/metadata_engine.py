@@ -11,35 +11,51 @@ class MetadataEngine:
 
     @staticmethod
     def extract_color_palette(image, force_size=None):
-        if force_size == 0: return None  # Отключено вручную
+        if force_size == 0:
+            return None
 
         h, w = image.shape[:2]
-        dim = force_size if force_size is not None else MetadataEngine.get_optimal_sizes(h, w)[0]
-        return cv2.resize(image, (dim, dim), interpolation=cv2.INTER_AREA)
+        if force_size is not None:
+            dim = force_size
+        else:
+            dim = MetadataEngine.get_optimal_sizes(h, w)[0]
+        return cv2.resize(image, (dim, dim),
+                          interpolation=cv2.INTER_AREA)
 
     @staticmethod
     def extract_edge_map(image, force_scale=None):
-        if force_scale == 0: return None  # Отключено вручную
+        if force_scale == 0:
+            return None
 
         h, w = image.shape[:2]
-        scale = force_scale if force_scale is not None else MetadataEngine.get_optimal_sizes(h, w)[1]
+        if force_scale is not None:
+            scale = force_scale
+        else:
+            scale = MetadataEngine.get_optimal_sizes(h, w)[1]
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 100, 200)
-        return cv2.resize(edges, (max(32, int(w * scale)), max(32, int(h * scale))), interpolation=cv2.INTER_AREA)
+        return cv2.resize(edges,
+                          (max(32, int(w * scale)),
+                           max(32, int(h * scale))),
+                          interpolation=cv2.INTER_AREA)
 
     @staticmethod
     def apply_color_correction(target_img, palette):
-        if palette is None: return target_img  # Пропуск, если метаданных нет
+        if palette is None:
+            return target_img
         h, w = target_img.shape[:2]
-        color_map = cv2.resize(palette, (w, h), interpolation=cv2.INTER_LANCZOS4)
+        color_map = cv2.resize(palette, (w, h),
+                               interpolation=cv2.INTER_LANCZOS4)
         return cv2.addWeighted(target_img, 0.85, color_map, 0.15, 0)
 
     @staticmethod
     def apply_edge_sharpening(target_img, edge_map_small):
-        if edge_map_small is None: return target_img  # Пропуск, если метаданных нет
+        if edge_map_small is None:
+            return target_img
         h, w = target_img.shape[:2]
-        edges = cv2.resize(edge_map_small, (w, h), interpolation=cv2.INTER_LANCZOS4)
+        edges = cv2.resize(edge_map_small, (w, h),
+                           interpolation=cv2.INTER_LANCZOS4)
 
         gaussian = cv2.GaussianBlur(target_img, (0, 0), 2.0)
         sharpened = cv2.addWeighted(target_img, 1.5, gaussian, -0.5, 0)

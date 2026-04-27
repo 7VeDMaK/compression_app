@@ -28,11 +28,13 @@ def cv2_imread_utf8(path):
 def cv2_imwrite_utf8(path, img, params=None):
     ext = os.path.splitext(path)[1]
     result, encoded_img = cv2.imencode(ext, img, params or [])
-    if result: encoded_img.tofile(path)
+    if result:
+        encoded_img.tofile(path)
 
 
 def get_file_info(filepath):
-    if not os.path.exists(filepath): return 0, "0 KB"
+    if not os.path.exists(filepath):
+        return 0, "0 KB"
     size_bytes = os.path.getsize(filepath)
     return size_bytes / 1024, f"{size_bytes / 1024:.2f} KB"
 
@@ -57,41 +59,51 @@ def index():
         elif cached_files_str:
             files_to_process = cached_files_str.split(',')
 
-        if not files_to_process: return "Файлы не выбраны."
+        if not files_to_process:
+            return "Error: No files"
 
         results_data = []
 
         for original_path in files_to_process:
-            if not os.path.exists(original_path): continue
+            if not os.path.exists(original_path):
+                continue
             original_img = cv2_imread_utf8(original_path)
-            if original_img is None: continue
+            if original_img is None:
+                continue
 
             h_orig, w_orig = original_img.shape[:2]
             size_orig_val, size_orig_str = get_file_info(original_path)
             filename = os.path.basename(original_path)
             name_only = filename.rsplit('.', 1)[0]
 
-            # Старт общего таймера
             t0 = time.time()
 
             if app_mode == 'auto' and size_orig_val < 50:
-                # КОДЕР (Пропуск)
-                compressed_path = os.path.join(RESULTS_FOLDER, f"comp_{name_only}.png")
+                compressed_path = os.path.join(RESULTS_FOLDER,
+                                               f"comp_{name_only}.png")
                 cv2_imwrite_utf8(compressed_path, original_img)
                 t1 = time.time()
 
-                # ДЕКОДЕР (Пропуск)
-                restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.png")
+                restored_path = os.path.join(RESULTS_FOLDER,
+                                             f"rest_{name_only}.png")
                 cv2_imwrite_utf8(restored_path, original_img)
                 t2 = time.time()
 
-                model_name, comp_level_str, highlight_text = "Пропуск", "Отключено", "Слишком мал"
+                model_name = "Pass"
+                comp_level_str = "Off"
+                highlight_text = "Small file"
             else:
                 if app_mode == 'auto':
                     megapixels = (h_orig * w_orig) / 1_000_000
-                    current_comp_level = 3 if megapixels >= 4.0 else (2 if megapixels >= 1.0 else 1)
-                    c_size, e_scale = None, None
-                    auto_reason = " (Smart Auto)"
+                    if megapixels >= 4.0:
+                        current_comp_level = 3
+                    elif megapixels >= 1.0:
+                        current_comp_level = 2
+                    else:
+                        current_comp_level = 1
+                    c_size = None
+                    e_scale = None
+                    auto_reason = " (Auto)"
                 else:
                     current_comp_level = manual_level
                     c_size = meta_color if meta_color != -1 else None
@@ -99,74 +111,110 @@ def index():
                     auto_reason = " (Manual)"
 
                 if current_comp_level == 0:
-                    # КОДЕР (Baseline)
-                    compressed_path = os.path.join(RESULTS_FOLDER, f"comp_{name_only}.jpg")
-                    cv2_imwrite_utf8(compressed_path, original_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    compressed_path = os.path.join(RESULTS_FOLDER,
+                                                   f"comp_{name_only}.jpg")
+                    cv2_imwrite_utf8(compressed_path, original_img,
+                                     [cv2.IMWRITE_JPEG_QUALITY, 85])
                     t1 = time.time()
 
-                    # ДЕКОДЕР (Baseline)
                     final_img = cv2_imread_utf8(compressed_path)
-                    model_name = "Отключено (Baseline JPEG)"
-                    restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.jpg")
-                    cv2_imwrite_utf8(restored_path, final_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                    model_name = "Baseline JPEG"
+                    restored_path = os.path.join(RESULTS_FOLDER,
+                                                 f"rest_{name_only}.jpg")
+                    cv2_imwrite_utf8(restored_path, final_img,
+                                     [cv2.IMWRITE_JPEG_QUALITY, 95])
                     t2 = time.time()
-                    comp_level_str = f"ОТКЛ{auto_reason}"
+                    comp_level_str = f"OFF{auto_reason}"
                 else:
-                    # КОДЕР (Гибрид)
-                    color_palette = meta_engine.extract_color_palette(original_img, force_size=c_size)
-                    edge_map = meta_engine.extract_edge_map(original_img, force_scale=e_scale)
-                    skeleton = compressor.cascade_compress(original_img, level=current_comp_level)
-                    compressed_path = os.path.join(RESULTS_FOLDER, f"comp_{name_only}.jpg")
-                    cv2_imwrite_utf8(compressed_path, skeleton, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    color_palette = meta_engine.extract_color_palette(
+                        original_img, force_size=c_size)
+                    edge_map = meta_engine.extract_edge_map(
+                        original_img, force_scale=e_scale)
+                    skeleton = compressor.cascade_compress(
+                        original_img, level=current_comp_level)
+
+                    compressed_path = os.path.join(RESULTS_FOLDER,
+                                                   f"comp_{name_only}.jpg")
+                    cv2_imwrite_utf8(compressed_path, skeleton,
+                                     [cv2.IMWRITE_JPEG_QUALITY, 85])
                     t1 = time.time()
 
-                    # ДЕКОДЕР (Гибрид)
-                    raw_restored, model_name, _ = ai_engine.restore_image(skeleton, original_img.shape,
-                                                                          steps=current_comp_level)
-                    color_corrected = meta_engine.apply_color_correction(raw_restored, color_palette)
-                    final_img = meta_engine.apply_edge_sharpening(color_corrected, edge_map)
-                    restored_path = os.path.join(RESULTS_FOLDER, f"rest_{name_only}.jpg")
-                    cv2_imwrite_utf8(restored_path, final_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                    raw_restored, model_name, _ = ai_engine.restore_image(
+                        skeleton, original_img.shape,
+                        steps=current_comp_level)
+
+                    color_corrected = meta_engine.apply_color_correction(
+                        raw_restored, color_palette)
+                    final_img = meta_engine.apply_edge_sharpening(
+                        color_corrected, edge_map)
+
+                    restored_path = os.path.join(RESULTS_FOLDER,
+                                                 f"rest_{name_only}.jpg")
+                    cv2_imwrite_utf8(restored_path, final_img,
+                                     [cv2.IMWRITE_JPEG_QUALITY, 95])
                     t2 = time.time()
 
                     comp_level_str = f"L{current_comp_level}{auto_reason}"
 
-            # Вычисляем раздельное время
             time_enc = round(t1 - t0, 2)
             time_dec = round(t2 - t1, 2)
 
             size_comp_val, size_comp_str = get_file_info(compressed_path)
             size_rest_val, size_rest_str = get_file_info(restored_path)
             comp_img = cv2_imread_utf8(compressed_path)
-            h_comp, w_comp = comp_img.shape[:2] if comp_img is not None else (0, 0)
+            if comp_img is not None:
+                h_comp, w_comp = comp_img.shape[:2]
+            else:
+                h_comp, w_comp = (0, 0)
 
             if app_mode == 'auto' and size_orig_val < 50:
-                psnr_val, ssim_val, compression_ratio = 100.0, 1.000, 0.0
+                psnr_val = 100.0
+                ssim_val = 1.000
+                compression_ratio = 0.0
             else:
                 restored_img = cv2_imread_utf8(restored_path)
-                psnr_val = round(calculate_psnr(original_img, restored_img), 2)
-                ssim_val = round(calculate_ssim(original_img, restored_img), 3)
-                compression_ratio = (1 - (size_comp_val / size_orig_val)) * 100 if size_orig_val > 0 else 0
-                highlight_text = f"Сжато на: {compression_ratio:.1f}%"
+                psnr_val = round(calculate_psnr(
+                    original_img, restored_img), 2)
+                ssim_val = round(calculate_ssim(
+                    original_img, restored_img), 3)
+                if size_orig_val > 0:
+                    compression_ratio = (1 - (size_comp_val / size_orig_val)) * 100
+                else:
+                    compression_ratio = 0
+                highlight_text = f"Comp: {compression_ratio:.1f}%"
 
             results_data.append({
-                "filename": filename, "psnr": psnr_val, "ssim": ssim_val,
+                "filename": filename,
+                "psnr": psnr_val,
+                "ssim": ssim_val,
                 "comp_ratio": f"{compression_ratio:.1f}%",
-                "time_enc": time_enc, "time_dec": time_dec,
+                "time_enc": time_enc,
+                "time_dec": time_dec,
                 "stages": [
-                    {"title": "1. Оригинал", "size": size_orig_str, "res": f"{w_orig}x{h_orig} px",
+                    {"title": "1. Original",
+                     "size": size_orig_str,
+                     "res": f"{w_orig}x{h_orig} px",
                      "path": original_path},
-                    {"title": f"2. Пакет ({comp_level_str})", "size": size_comp_str, "res": f"{w_comp}x{h_comp} px",
-                     "path": compressed_path, "highlight": highlight_text},
-                    {"title": f"3. Итог ({model_name})", "size": size_rest_str, "res": f"{w_orig}x{h_orig} px",
+                    {"title": f"2. Package ({comp_level_str})",
+                     "size": size_comp_str,
+                     "res": f"{w_comp}x{h_comp} px",
+                     "path": compressed_path,
+                     "highlight": highlight_text},
+                    {"title": f"3. Result ({model_name})",
+                     "size": size_rest_str,
+                     "res": f"{w_orig}x{h_orig} px",
                      "path": restored_path}
                 ]
             })
 
         cached_files_out = ",".join(files_to_process)
-        return render_template('index.html', results=results_data, cached_files=cached_files_out,
-                               app_mode=app_mode, current_level=manual_level,
-                               meta_color=meta_color, meta_edge=meta_edge)
+        return render_template('index.html',
+                               results=results_data,
+                               cached_files=cached_files_out,
+                               app_mode=app_mode,
+                               current_level=manual_level,
+                               meta_color=meta_color,
+                               meta_edge=meta_edge)
 
     return render_template('index.html')
 
