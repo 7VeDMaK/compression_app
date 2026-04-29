@@ -101,4 +101,17 @@ class AIEnhancer:
             result_img = cv2.resize(result_img, (w_target, h_target),
                                     interpolation=cv2.INTER_CUBIC)
 
+        comp_lab = cv2.cvtColor(
+            compressed_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+        res_lab = cv2.cvtColor(
+            result_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+        for i in range(3):
+            shift = comp_lab[:, :, i].mean() - res_lab[:, :, i].mean()
+            res_lab[:, :, i] += shift
+
+        result_img = np.clip(res_lab, 0, 255).astype(np.uint8)
+        result_img = cv2.cvtColor(result_img, cv2.COLOR_LAB2BGR)
+        # --------------------------------------------------
+
         return result_img, selected_model.upper(), reason

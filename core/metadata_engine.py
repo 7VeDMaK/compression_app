@@ -44,10 +44,25 @@ class MetadataEngine:
     def apply_color_correction(target_img, palette):
         if palette is None:
             return target_img
+
         h, w = target_img.shape[:2]
         color_map = cv2.resize(palette, (w, h),
-                               interpolation=cv2.INTER_LANCZOS4)
-        return cv2.addWeighted(target_img, 0.85, color_map, 0.15, 0)
+                               interpolation=cv2.INTER_CUBIC)
+
+        t_lab = cv2.cvtColor(target_img, cv2.COLOR_BGR2LAB)
+        t_lab = t_lab.astype(np.float32)
+
+        c_lab = cv2.cvtColor(color_map, cv2.COLOR_BGR2LAB)
+        c_lab = c_lab.astype(np.float32)
+
+        for i in range(3):
+            t_m, t_s = t_lab[:, :, i].mean(), t_lab[:, :, i].std()
+            c_m, c_s = c_lab[:, :, i].mean(), c_lab[:, :, i].std()
+
+            t_lab[:, :, i] = ((t_lab[:, :, i] - t_m) * (c_s / (t_s + 1e-6))) + c_m
+
+        t_lab = np.clip(t_lab, 0, 255).astype(np.uint8)
+        return cv2.cvtColor(t_lab, cv2.COLOR_LAB2BGR)
 
     @staticmethod
     def apply_edge_sharpening(target_img, edge_map_small):

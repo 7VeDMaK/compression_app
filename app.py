@@ -1,6 +1,10 @@
+# =====================================================================
+# app.py
+# =====================================================================
 import os
 import cv2
 import time
+import shutil
 import numpy as np
 from flask import Flask, render_template, request
 from core.wavelet_engine import WaveletCompressor
@@ -75,18 +79,20 @@ def index():
             size_orig_val, size_orig_str = get_file_info(original_path)
             filename = os.path.basename(original_path)
             name_only = filename.rsplit('.', 1)[0]
+            extension = os.path.splitext(original_path)[1]
 
             t0 = time.time()
 
             if app_mode == 'auto' and size_orig_val < 50:
+                # Физическое копирование мелких файлов
                 compressed_path = os.path.join(RESULTS_FOLDER,
-                                               f"comp_{name_only}.png")
-                cv2_imwrite_utf8(compressed_path, original_img)
+                                               f"comp_{name_only}{extension}")
+                shutil.copy(original_path, compressed_path)
                 t1 = time.time()
 
                 restored_path = os.path.join(RESULTS_FOLDER,
-                                             f"rest_{name_only}.png")
-                cv2_imwrite_utf8(restored_path, original_img)
+                                             f"rest_{name_only}{extension}")
+                shutil.copy(original_path, restored_path)
                 t2 = time.time()
 
                 model_name = "Pass"
@@ -111,19 +117,18 @@ def index():
                     auto_reason = " (Manual)"
 
                 if current_comp_level == 0:
+                    # ЧЕСТНЫЙ БЕЙЗЛАЙН: Прямое копирование байт
                     compressed_path = os.path.join(RESULTS_FOLDER,
-                                                   f"comp_{name_only}.jpg")
-                    cv2_imwrite_utf8(compressed_path, original_img,
-                                     [cv2.IMWRITE_JPEG_QUALITY, 85])
+                                                   f"comp_{name_only}{extension}")
+                    shutil.copy(original_path, compressed_path)
                     t1 = time.time()
 
-                    final_img = cv2_imread_utf8(compressed_path)
-                    model_name = "Baseline JPEG"
                     restored_path = os.path.join(RESULTS_FOLDER,
-                                                 f"rest_{name_only}.jpg")
-                    cv2_imwrite_utf8(restored_path, final_img,
-                                     [cv2.IMWRITE_JPEG_QUALITY, 95])
+                                                 f"rest_{name_only}{extension}")
+                    shutil.copy(original_path, restored_path)
                     t2 = time.time()
+
+                    model_name = "Original (Pass-Through)"
                     comp_level_str = f"OFF{auto_reason}"
                 else:
                     color_palette = meta_engine.extract_color_palette(
@@ -133,6 +138,7 @@ def index():
                     skeleton = compressor.cascade_compress(
                         original_img, level=current_comp_level)
 
+                    # Скелет сохраняем с качеством 85
                     compressed_path = os.path.join(RESULTS_FOLDER,
                                                    f"comp_{name_only}.jpg")
                     cv2_imwrite_utf8(compressed_path, skeleton,
@@ -148,6 +154,7 @@ def index():
                     final_img = meta_engine.apply_edge_sharpening(
                         color_corrected, edge_map)
 
+                    # Финал сохраняем с качеством 95
                     restored_path = os.path.join(RESULTS_FOLDER,
                                                  f"rest_{name_only}.jpg")
                     cv2_imwrite_utf8(restored_path, final_img,
@@ -161,22 +168,25 @@ def index():
 
             size_comp_val, size_comp_str = get_file_info(compressed_path)
             size_rest_val, size_rest_str = get_file_info(restored_path)
-            comp_img = cv2_imread_utf8(compressed_path)
-            if comp_img is not None:
-                h_comp, w_comp = comp_img.shape[:2]
-            else:
-                h_comp, w_comp = (0, 0)
 
-            if app_mode == 'auto' and size_orig_val < 50:
+            # Избегаем чтения картинки, если мы делали Pass-Through
+            if current_comp_level == 0 or (app_mode == 'auto' and size_orig_val < 50):
+                h_comp, w_comp = h_orig, w_orig
                 psnr_val = 100.0
                 ssim_val = 1.000
                 compression_ratio = 0.0
+                if not 'highlight_text' in locals():
+                    highlight_text = "Pass-through"
             else:
+                comp_img = cv2_imread_utf8(compressed_path)
+                h_comp, w_comp = comp_img.shape[:2] if comp_img is not None else (0, 0)
+
                 restored_img = cv2_imread_utf8(restored_path)
                 psnr_val = round(calculate_psnr(
                     original_img, restored_img), 2)
                 ssim_val = round(calculate_ssim(
                     original_img, restored_img), 3)
+
                 if size_orig_val > 0:
                     compression_ratio = (1 - (size_comp_val / size_orig_val)) * 100
                 else:
